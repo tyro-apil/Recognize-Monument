@@ -1,0 +1,3 @@
+[submodule "libs/LightGlue"]
+	path = libs/LightGlue
+	url = git@github.com:tyro-apil/LightGlue
