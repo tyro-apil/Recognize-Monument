@@ -7,7 +7,7 @@ import torch
 import re
 from tqdm import tqdm
 from pymilvus import MilvusClient
-from global_feat_extract import GlobalFeatureExtractor
+from .global_feat_extract import GlobalFeatureExtractor
 
 class MilvusImageIndexer:
     def __init__(self, 
