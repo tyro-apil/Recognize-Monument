@@ -11,8 +11,8 @@ from .global_feat_extract import GlobalFeatureExtractor
 
 class MilvusImageIndexer:
     def __init__(self, 
-                 milvus_uri="./data/vectors.db", 
-                 collection_name="image_features",
+                 milvus_uri="./data/monumentdb.db", 
+                 collection_name="global_features",
                  model_name="efficientnet_b3",
                  gem_p=3,
                  device=None):
