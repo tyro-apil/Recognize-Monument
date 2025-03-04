@@ -1,10 +1,11 @@
 import os
+import cv2
 from src.pipeline import MonumentPipeline
 
 def main():
     """Example usage of the MonumentPipeline."""
 
-    image="./images/img1.jpg"
+    image_path="./images/img1.jpg"
     model="./weights/yolov11_det.engine"
     confidence=0.7
     milvus_uri="./data/monumentdb.db"
@@ -17,6 +18,7 @@ def main():
     # Create output directory if it doesn't exist
     os.makedirs(output, exist_ok=True)
     
+    image = cv2.imread(image_path)
     # Get base filename without extension
     base_name = os.path.splitext(os.path.basename(image))[0]
     
