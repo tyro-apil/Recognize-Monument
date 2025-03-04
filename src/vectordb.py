@@ -148,16 +148,3 @@ class MilvusImageIndexer:
             output_fields=["id", "filename", "landmark"]
         )
     
-    def get_all_landmarks(self):
-        """Get a list of all unique landmarks in the database"""
-        results = self.client.query(
-            collection_name=self.collection_name,
-            output_fields=["landmark"]
-        )
-        
-        landmarks = set()
-        for item in results:
-            if 'landmark' in item and item['landmark']:
-                landmarks.add(item['landmark'])
-        
-        return sorted(list(landmarks))
