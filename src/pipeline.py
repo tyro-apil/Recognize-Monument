@@ -74,7 +74,7 @@ class MonumentPipeline:
     
     def process_image(
         self, 
-        image_path: str,
+        image,
         top_k: int = 1,
         return_image: bool = False
     ) -> Dict[str, Any]:
@@ -90,14 +90,11 @@ class MonumentPipeline:
             Dictionary with detection and recognition results
         """
         # Load image
-        if isinstance(image_path, str):
-            # Load with PIL for feature extraction
-            pil_image = Image.open(image_path).convert('RGB')
-            # Load with OpenCV for detection and visualization
-            cv_image = cv2.imread(image_path)
-        else:
-            raise TypeError(f"Unsupported input type: {type(image_path)}")
+        if not isinstance(image, np.ndarray):
+            raise TypeError(f"Unsupported input type: {type(image)}")
         
+        cv_image = image.copy()
+
         # Detect monuments
         detections = self.detector.detect(cv_image)
         
@@ -108,7 +105,7 @@ class MonumentPipeline:
             confidence = det['conf']
             
             # Extract region of interest
-            roi = extract_roi(pil_image, bbox)
+            roi = extract_roi(cv_image, bbox)
             
             # Search for matches in the database
             matches = self._search_similar_monuments(roi, top_k)
@@ -325,7 +322,7 @@ class MonumentPipeline:
         
         return matches
 
-    def visualize_results(self, image_path, results, output_path=None, show_all_matches=False):
+    def visualize_results(self, image, results, output_path=None, show_all_matches=False):
         """
         Create a visualization of detection and recognition results.
         
@@ -338,13 +335,8 @@ class MonumentPipeline:
         Returns:
             Annotated image (numpy array)
         """
-        # Load image
-        if isinstance(image_path, str):
-            image = cv2.imread(image_path)
-        elif 'image' in results:
-            image = results['image'].copy()
-        else:
-            raise ValueError("Image path or results with image field required")
+        if not isinstance(image, np.ndarray):
+            raise TypeError(f"Unsupported input type: {type(image)}")
         
         # Colors for different detections
         colors = [
