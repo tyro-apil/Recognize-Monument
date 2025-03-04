@@ -371,7 +371,7 @@ class MonumentPipeline:
                 det_info, 
                 (bbox[0], bbox[1] - 10), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
-                2, 
+                0.5, 
                 color, 
                 2
             )
@@ -388,7 +388,7 @@ class MonumentPipeline:
                             match_text, 
                             (bbox[0], y_pos), 
                             cv2.FONT_HERSHEY_SIMPLEX, 
-                            2, 
+                            0.5, 
                             color, 
                             2
                         )
@@ -401,7 +401,7 @@ class MonumentPipeline:
                         match_text, 
                         (bbox[0], bbox[3] + 20), 
                         cv2.FONT_HERSHEY_SIMPLEX, 
-                        2, 
+                        0.5, 
                         color, 
                         2
                     )
