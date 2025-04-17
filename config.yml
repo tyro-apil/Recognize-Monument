@@ -1,0 +1,17 @@
+# config.yaml
+# Configuration for Monument Recognition API
+
+pipeline:
+  detector_model_path: "./weights/yolov11_det.engine"
+  detector_confidence: 0.7
+  extractor_model_name: "efficientnet_b3"
+  milvus_uri: "./data/monumentdb.db"
+  collection_name: "global_features"
+  device: null  # null will auto-select cuda if available
+  top_k: 5
+
+api:
+  max_concurrent_tasks: 4
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
