@@ -5,8 +5,8 @@ FastAPI application for the Monument Recognition system.
 Handles concurrent image processing requests from Flutter frontend.
 """
 
-import os
 import json
+import yaml
 import uuid
 import asyncio
 import numpy as np
@@ -19,10 +19,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Import the MonumentPipeline directly
 from src.pipeline import MonumentPipeline
 
-# Create FastAPI app
 app = FastAPI(
     title="Monument Recognition API",
     description="API for detecting and recognizing monuments in images",
@@ -38,16 +36,19 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Initialize global variables for the pipeline
-DETECTOR_MODEL_PATH = os.environ.get("DETECTOR_MODEL_PATH", "./weights/yolov11_det.engine")
-DETECTOR_CONFIDENCE = float(os.environ.get("DETECTOR_CONFIDENCE", "0.7"))
-EXTRACTOR_MODEL_NAME = os.environ.get("EXTRACTOR_MODEL_NAME", "efficientnet_b3")
-MILVUS_URI = os.environ.get("MILVUS_URI", "./data/monumentdb.db")
-COLLECTION_NAME = os.environ.get("COLLECTION_NAME", "global_features")
-DEVICE = os.environ.get("DEVICE", None)  # None will auto-select cuda if available
+with open('config.yml', 'r') as config_file:
+    configs = yaml.safe_load(config_file)
+
+DETECTOR_MODEL_PATH = configs['pipeline']['detector_model_path']
+DETECTOR_CONFIDENCE = configs['pipeline']['detector_confidence']
+EXTRACTOR_MODEL_NAME = configs['pipeline']['extractor_model_name']
+MILVUS_URI = configs['pipeline']['milvus_uri']
+COLLECTION_NAME = configs['pipeline']['global_features']
+DEVICE = configs['pipeline']['device']
+TOP_K = configs['pipeline']['top_k']
 
 # Max number of concurrent processing tasks
-MAX_CONCURRENT_TASKS = int(os.environ.get("MAX_CONCURRENT_TASKS", "4"))
+MAX_CONCURRENT_TASKS = configs['api']['max_concurrent_tasks']
 
 # Response models
 class Match(BaseModel):
@@ -66,15 +67,10 @@ class RecognitionResponse(BaseModel):
     detections: List[Detection]
     location: Optional[str] = None
 
-# Initialize thread pool for concurrent processing
 executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TASKS)
-
-# Track active tasks
 active_tasks: Dict[str, asyncio.Task] = {}
 
-# Initialize pipeline
 monument_pipeline = None
-
 try:
     monument_pipeline = MonumentPipeline(
         detector_model_path=DETECTOR_MODEL_PATH,
@@ -115,7 +111,7 @@ def process_image_task(img_array, location):
         # Process the image with the pipeline
         results = monument_pipeline.process_image(
             image=img_array,
-            top_k=3,
+            top_k=TOP_K,
             return_image=False
         )
         
