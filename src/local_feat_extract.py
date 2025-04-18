@@ -3,8 +3,8 @@ Local feature extraction implementation.
 """
 
 import torch
-from lightglue import SuperPoint
-from lightglue.utils import load_image
+from libs.LightGlue.lightglue import SuperPoint
+from libs.LightGlue.lightglue.utils import load_image
 
 class LocalFeatureExtractor:
     """
