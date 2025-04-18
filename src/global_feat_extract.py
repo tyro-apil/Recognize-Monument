@@ -24,6 +24,10 @@ class GeM(nn.Module):
         self.eps = eps
         
     def forward(self, x):
+        """
+        Input shape = (1, 1536, 7, 7)
+        Output shape = (1, 1536, 1, 1)
+        """
         return F.avg_pool2d(x.clamp(min=self.eps).pow(self.p),
                            (x.size(-2), x.size(-1))).pow(1./self.p)
 
@@ -49,12 +53,16 @@ class GlobalFeatureExtractor(nn.Module):
         # Set model to evaluation mode
         self.eval()
         
-    def forward(self, x):
+    def forward(self, img):
+        """
+        Input image shape = (224,224)
+        Output feature vector shape = (1, 1536)
+        """
         with torch.no_grad():
-            features = self.backbone(x)
+            features = self.backbone(img)
             pooled_features = self.gem_pooling(features)
             # Flatten to get a feature vector
-            return pooled_features.view(x.size(0), -1)
+            return pooled_features.view(img.size(0), -1)
     
     def extract(self, image_or_path):
         """
