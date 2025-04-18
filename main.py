@@ -39,6 +39,7 @@ app.add_middleware(
 with open('config.yml', 'r') as config_file:
     configs = yaml.safe_load(config_file)
 
+# Pipeline Global Variables
 DETECTOR_MODEL_PATH = configs['pipeline']['detector_model_path']
 DETECTOR_CONFIDENCE = configs['pipeline']['detector_confidence']
 EXTRACTOR_MODEL_NAME = configs['pipeline']['extractor_model_name']
@@ -47,8 +48,11 @@ COLLECTION_NAME = configs['pipeline']['global_features']
 DEVICE = configs['pipeline']['device']
 TOP_K = configs['pipeline']['top_k']
 
-# Max number of concurrent processing tasks
+# API Global Variables
 MAX_CONCURRENT_TASKS = configs['api']['max_concurrent_tasks']
+HOST = configs['api']['host']
+PORT = configs['api']['port']
+DEBUG = configs['api']['debug']
 
 # Response models
 class Match(BaseModel):
@@ -265,4 +269,4 @@ async def recognize_monument_json(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host=HOST, port=PORT, reload=DEBUG)
