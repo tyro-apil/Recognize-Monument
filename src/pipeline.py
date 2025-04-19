@@ -1,19 +1,17 @@
 """
 src/pipeline.py
-
 Monument detection and recognition pipeline.
 Integrates detection, feature extraction, and database matching.
 """
-
 import json
 from typing import List, Dict, Any, Union, Optional
 import torch
 import numpy as np
 from PIL import Image
 import cv2
-
 from .detect import YOLOMonumentDetector
 from .vectordb import MilvusImageIndexer
+from .local_feat_match import LocalMatcher, rerank_with_local_features
 from utils.preprocess import extract_roi
 
 class MonumentPipeline:
@@ -24,6 +22,7 @@ class MonumentPipeline:
     1. Monument detection using YOLOv11
     2. Feature extraction from detected regions
     3. Matching against a database of known monuments
+    4. Local feature reranking of top results
     """
     
     def __init__(
@@ -33,7 +32,8 @@ class MonumentPipeline:
         extractor_model_name: str = "efficientnet_b3",
         milvus_uri: str = "./data/monumentdb.db",
         collection_name: str = "global_features",
-        device: Optional[str] = None
+        device: Optional[str] = None,
+        use_local_reranking: bool = False
     ):
         """
         Initialize the monument detection and recognition pipeline.
@@ -45,6 +45,7 @@ class MonumentPipeline:
             milvus_uri: URI for the Milvus database
             collection_name: Name of the collection in Milvus
             device: Device to run models on ('cuda', 'cpu', etc.)
+            use_local_reranking: Whether to use local feature reranking
         """
         # Determine device
         if device is None:
@@ -71,30 +72,38 @@ class MonumentPipeline:
         
         # Get reference to the feature extractor from the DB indexer
         self.feature_extractor = self.db.extractor
+        
+        # Initialize local feature matcher if needed
+        self.use_local_reranking = use_local_reranking
+        if use_local_reranking:
+            self.local_matcher = LocalMatcher(device=self.device)
+        else:
+            self.local_matcher = None
     
     def process_image(
         self, 
         image,
-        top_k: int = 1,
+        top_k_global: int = 5,
+        top_k_final: int = 1,
         return_image: bool = False
     ) -> Dict[str, Any]:
         """
         Process an image to detect and recognize monuments.
         
         Args:
-            image_path: Path to the input image
-            top_k: Number of top matches to return for each detection
+            image: Input image as numpy array
+            top_k_global: Number of top matches to retrieve with global features
+            top_k_final: Number of final matches to return after reranking
             return_image: Whether to return the annotated image
             
         Returns:
             Dictionary with detection and recognition results
         """
-        # Load image
+        # Validate input image
         if not isinstance(image, np.ndarray):
             raise TypeError(f"Unsupported input type: {type(image)}")
         
         cv_image = image.copy()
-
         # Detect monuments
         detections = self.detector.detect(cv_image)
         
@@ -108,13 +117,45 @@ class MonumentPipeline:
             roi = extract_roi(cv_image, bbox)
             
             # Search for matches in the database
-            matches = self._search_similar_monuments(roi, top_k)
+            matches = self._search_similar_monuments(roi, top_k_global)
+            
+            # Apply local feature reranking if enabled
+            if self.use_local_reranking and matches:
+                # Convert matches to format expected by reranking function
+                candidate_infos = [{
+                    'landmark': match['landmark'],
+                    'filename': match['filename'],
+                    'global_score': match['score']
+                } for match in matches]
+                
+                # Rerank using local features
+                reranked_matches = rerank_with_local_features(
+                    roi, 
+                    candidate_infos,
+                    self.local_matcher,
+                    top_k=top_k_final
+                )
+                
+                # Format reranked matches
+                final_matches = []
+                for match in reranked_matches:
+                    final_matches.append({
+                        'landmark': match['landmark'],
+                        'filename': match['filename'],
+                        'global_score': match['global_score'],
+                        'local_score': match['local_score'],
+                        'num_matches': match['local_matches'],
+                        'score': match['local_score']  # Use local score as final score
+                    })
+            else:
+                # Use global matches, limited to top_k_final
+                final_matches = matches[:top_k_final]
             
             # Format the result
             result = {
                 'bbox': bbox,
                 'confidence': float(confidence),
-                'matches': matches
+                'matches': final_matches
             }
             results.append(result)
             
@@ -130,8 +171,8 @@ class MonumentPipeline:
                 )
                 
                 # Add text for top match if available
-                if matches and len(matches) > 0:
-                    top_match = matches[0]
+                if final_matches and len(final_matches) > 0:
+                    top_match = final_matches[0]
                     label = f"{top_match['landmark']} ({top_match['score']:.2f})"
                     cv2.putText(
                         cv_image, 
@@ -153,6 +194,36 @@ class MonumentPipeline:
             response['image'] = cv_image
         
         return response
+    
+    def visualize_matches(self, query_image, match_path):
+        """
+        Visualize local feature matches between query and matched image.
+        
+        Args:
+            query_image: Query image (numpy array or path)
+            match_path: Path to the matching image
+            
+        Returns:
+            Matplotlib axes with visualization
+        """
+        if not self.use_local_reranking:
+            raise ValueError("Local feature matching is not enabled")
+        
+        # Extract features
+        query_feats, query_img = self.local_matcher.extract_features(query_image)
+        match_feats, match_img = self.local_matcher.extract_features(match_path)
+        
+        # Match features
+        match_info = self.local_matcher.match_and_score(query_feats, match_feats)
+        
+        # Visualize
+        return self.local_matcher.visualize_matches(
+            query_img,
+            match_img,
+            query_feats,
+            match_feats,
+            match_info
+        )
         
     def _merge_duplicate_detections(self, detections, iou_threshold=0.5, landmark_threshold=0.5):
         """
@@ -321,13 +392,13 @@ class MonumentPipeline:
                 })
         
         return matches
-
+        
     def visualize_results(self, image, results, output_path=None, show_all_matches=False):
         """
         Create a visualization of detection and recognition results.
         
         Args:
-            image_path: Path to the original image
+            image: Input image as numpy array
             results: Results from process_image
             output_path: Path to save the visualization (optional)
             show_all_matches: Whether to show all matches or just the top one
@@ -337,6 +408,9 @@ class MonumentPipeline:
         """
         if not isinstance(image, np.ndarray):
             raise TypeError(f"Unsupported input type: {type(image)}")
+        
+        # Make a copy of the image to avoid modifying the original
+        vis_image = image.copy()
         
         # Colors for different detections
         colors = [
@@ -357,7 +431,7 @@ class MonumentPipeline:
             
             # Draw bounding box
             cv2.rectangle(
-                image, 
+                vis_image, 
                 (bbox[0], bbox[1]), 
                 (bbox[2], bbox[3]), 
                 color, 
@@ -367,7 +441,7 @@ class MonumentPipeline:
             # Add detection info
             det_info = f"Det {i+1}: {confidence:.2f}"
             cv2.putText(
-                image, 
+                vis_image, 
                 det_info, 
                 (bbox[0], bbox[1] - 10), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
@@ -381,10 +455,15 @@ class MonumentPipeline:
                 if show_all_matches:
                     # Show all matches with scores
                     for j, match in enumerate(matches):
-                        match_text = f"{match['landmark']} ({match['score']:.2f})"
+                        # Show different information based on whether local matching was used
+                        if 'local_score' in match:
+                            match_text = f"{match['landmark']} (L:{match['local_score']:.2f}, G:{match['global_score']:.2f})"
+                        else:
+                            match_text = f"{match['landmark']} ({match['score']:.2f})"
+                            
                         y_pos = bbox[3] + 20 + (j * 20)  # Position below the bbox
                         cv2.putText(
-                            image, 
+                            vis_image, 
                             match_text, 
                             (bbox[0], y_pos), 
                             cv2.FONT_HERSHEY_SIMPLEX, 
@@ -395,9 +474,15 @@ class MonumentPipeline:
                 else:
                     # Show only the top match
                     top_match = matches[0]
-                    match_text = f"{top_match['landmark']} ({top_match['score']:.2f})"
+                    
+                    # Different formatting based on available information
+                    if 'local_score' in top_match:
+                        match_text = f"{top_match['landmark']} (L:{top_match['local_score']:.2f})"
+                    else:
+                        match_text = f"{top_match['landmark']} ({top_match['score']:.2f})"
+                        
                     cv2.putText(
-                        image, 
+                        vis_image, 
                         match_text, 
                         (bbox[0], bbox[3] + 20), 
                         cv2.FONT_HERSHEY_SIMPLEX, 
@@ -408,10 +493,10 @@ class MonumentPipeline:
         
         # Save image if output path is provided
         if output_path:
-            cv2.imwrite(output_path, image)
+            cv2.imwrite(output_path, vis_image)
             print(f"Visualization saved to {output_path}")
         
-        return image
+        return vis_image
     
     def to_json(self, results):
         """
