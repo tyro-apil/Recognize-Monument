@@ -44,7 +44,7 @@ DETECTOR_MODEL_PATH = configs['pipeline']['detector_model_path']
 DETECTOR_CONFIDENCE = configs['pipeline']['detector_confidence']
 EXTRACTOR_MODEL_NAME = configs['pipeline']['extractor_model_name']
 MILVUS_URI = configs['pipeline']['milvus_uri']
-COLLECTION_NAME = configs['pipeline']['global_features']
+COLLECTION_NAME = configs['pipeline']['collection_name']
 DEVICE = configs['pipeline']['device']
 TOP_K = configs['pipeline']['top_k']
 
